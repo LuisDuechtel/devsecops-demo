@@ -24,48 +24,39 @@ description = "Database Connection String"
 regex = '''(?i)(mongodb|postgresql|mysql|mssql|oracle|jdbc):\/\/[^:]+:[^@]+@[^\/]+'''
 keywords = ["mongodb", "postgresql", "mysql", "connection"]
 
-# Pfade die ignoriert werden sollen
+# Globale Allowlist
 [allowlist]
+description = "Global allowlist"
+
+# Pfade die ignoriert werden sollen
 paths = [
     '''node_modules''',
     '''vendor''',
     '''\.git''',
-    '''\.github/workflows/.*\.yml''',  # Workflows selbst ignorieren
+    '''\.github/workflows/.*\.yml''',
     '''test.*''',
     '''.*\.test\..*''',
     '''.*_test\..*''',
 ]
 
 # Bestimmte Dateitypen ignorieren
-files = [
+regexes = [
     '''(.*?)(jpg|jpeg|png|gif|doc|docx|pdf|bin|svg|ico|mp4|mov|avi|mp3|wav|woff|woff2|ttf|eot)$''',
     '''package-lock\.json''',
     '''yarn\.lock''',
     '''Gemfile\.lock''',
+    '''(?i)(example|demo|test|sample|dummy|fake)''',
+    '''(?i)(localhost|127\.0\.0\.1|0\.0\.0\.0)''',
+    '''(?i)public[_\-\s]?key''',
 ]
 
-# Erlaubte Patterns (False Positives vermeiden)
-[[rules.allowlist]]
-description = "Beispiel/Demo Secrets erlauben"
-regex = '''(?i)(example|demo|test|sample|dummy|fake)'''
-
-[[rules.allowlist]]
-description = "Localhost URLs"
-regex = '''(?i)(localhost|127\.0\.0\.1|0\.0\.0\.0)'''
-
-[[rules.allowlist]]
-description = "Public Keys (sind ok)"
-regex = '''(?i)public[_\-\s]?key'''
-
-# Commits die ignoriert werden sollen (z.B. alte Commits)
-[allowlist.commits]
+# Commits die ignoriert werden sollen (Liste von Strings!)
 commits = [
     # Hier können spezifische Commit-Hashes eingetragen werden
-    # "abcd1234...",
+    # "abcd1234567890",
 ]
 
-# Stopwords - wenn diese gefunden werden, wird die Regel ignoriert
-[[rules.allowlist]]
+# Stopwords - globale Stopwords
 stopwords = [
     "example",
     "test",

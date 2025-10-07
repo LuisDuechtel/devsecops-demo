@@ -50,6 +50,9 @@ jobs:
   dependency-check:
     name: 📦 Dependency Security Check
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write # Benötigt für SARIF Upload
     steps:
       - name: Checkout code
         uses: actions/checkout@v3
@@ -60,10 +63,11 @@ jobs:
         with:
           project: "devsecops-demo"
           path: "."
-          format: "HTML,JSON,SARIF"
+          format: "SARIF" # Hauptformat für GitHub Security
           args: >
             --enableRetired
             --enableExperimental
+            --format JSON  # Zusätzliches Format via args
 
       - name: Upload Dependency Check Report
         if: always()

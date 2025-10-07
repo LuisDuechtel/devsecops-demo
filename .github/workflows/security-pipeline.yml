@@ -250,8 +250,8 @@ jobs:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
         with:
           args: >
-            -Dsonar.projectKey=${{ github.repository_owner }}_${{ github.event.repository.name }}
-            -Dsonar.organization=${{ github.repository_owner }}
+            -Dsonar.projectKey=LuisDuechtel_devsecops-demo
+            -Dsonar.organization=devsecopsdemograupner
             -Dsonar.python.coverage.reportPaths=coverage.xml
             -Dsonar.sources=src/
             -Dsonar.tests=tests/

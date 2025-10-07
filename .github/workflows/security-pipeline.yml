@@ -1,0 +1,514 @@
+name: DevSecOps Security Pipeline
+
+# Wann die Pipeline ausgeführt wird
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main]
+  schedule:
+    # Täglich um 2 Uhr nachts
+    - cron: "0 2 * * *"
+
+# Umgebungsvariablen
+env:
+  PYTHON_VERSION: "3.9"
+  NODE_VERSION: "16"
+  JAVA_VERSION: "11"
+
+jobs:
+  # ========================================
+  # Job 1: Secret Scanning mit Gitleaks
+  # ========================================
+  secret-scanning:
+    name: 🔍 Secret Scanning
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+        with:
+          fetch-depth: 0 # Komplette Git-Historie für Gitleaks
+
+      - name: Run Gitleaks
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITLEAKS_LICENSE: ${{ secrets.GITLEAKS_LICENSE }} # Optional für kommerzielle Features
+
+      - name: Upload Gitleaks Report
+        if: failure()
+        uses: actions/upload-artifact@v3
+        with:
+          name: gitleaks-report
+          path: |
+            gitleaks-report.json
+            gitleaks-report.sarif
+
+  # ========================================
+  # Job 2: Dependency Check (OWASP)
+  # ========================================
+  dependency-check:
+    name: 📦 Dependency Security Check
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Run OWASP Dependency Check
+        uses: dependency-check/Dependency-Check_Action@main
+        id: depcheck
+        with:
+          project: "devsecops-demo"
+          path: "."
+          format: "HTML,JSON,SARIF"
+          args: >
+            --enableRetired
+            --enableExperimental
+
+      - name: Upload Dependency Check Report
+        if: always()
+        uses: actions/upload-artifact@v3
+        with:
+          name: dependency-check-report
+          path: reports/
+
+      - name: Upload SARIF to GitHub Security
+        if: always()
+        uses: github/codeql-action/upload-sarif@v2
+        with:
+          sarif_file: reports/dependency-check-report.sarif
+          category: dependency-check
+
+      - name: Check for Critical/High Vulnerabilities
+        if: always()
+        run: |
+          if [ -f reports/dependency-check-report.json ]; then
+            CRITICAL=$(jq '[.dependencies[].vulnerabilities[]? | select(.severity=="CRITICAL")] | length' reports/dependency-check-report.json)
+            HIGH=$(jq '[.dependencies[].vulnerabilities[]? | select(.severity=="HIGH")] | length' reports/dependency-check-report.json)
+            
+            echo "Found $CRITICAL CRITICAL and $HIGH HIGH vulnerabilities"
+            
+            if [ "$CRITICAL" -gt 0 ]; then
+              echo "❌ Critical vulnerabilities found! Pipeline will fail."
+              exit 1
+            fi
+            
+            if [ "$HIGH" -gt 2 ]; then
+              echo "⚠️ More than 2 HIGH vulnerabilities found! Please review."
+              exit 1
+            fi
+          fi
+
+  # ========================================
+  # Job 3: SAST mit mehreren Tools
+  # ========================================
+  sast-scanning:
+    name: 🛡️ SAST Security Analysis
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        language: [python, javascript, java]
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      # Python Security mit Bandit
+      - name: Python Security Check (Bandit)
+        if: matrix.language == 'python'
+        run: |
+          pip install bandit
+          # Erstelle Test-Python-Datei wenn keine existiert
+          if [ ! -f "src/example.py" ]; then
+            echo 'import os
+          def unsafe_function(user_input):
+              # SQL Injection vulnerability
+              query = f"SELECT * FROM users WHERE id = {user_input}"
+              os.system(f"echo {user_input}")  # Command injection
+              eval(user_input)  # Code injection
+          ' > src/example.py
+          fi
+
+          bandit -r src/ -f json -o bandit-report.json || true
+          bandit -r src/ -f txt || true
+
+      # JavaScript Security mit ESLint Security Plugin
+      - name: JavaScript Security Check
+        if: matrix.language == 'javascript'
+        run: |
+          # Erstelle package.json wenn nicht vorhanden
+          if [ ! -f "package.json" ]; then
+            echo '{
+              "name": "devsecops-demo",
+              "version": "1.0.0",
+              "dependencies": {
+                "express": "4.17.1",
+                "lodash": "4.17.11"
+              }
+            }' > package.json
+          fi
+
+          npm install --save-dev eslint eslint-plugin-security
+
+          # ESLint Konfiguration
+          echo '{
+            "env": {"node": true, "es6": true},
+            "extends": ["eslint:recommended", "plugin:security/recommended"],
+            "plugins": ["security"]
+          }' > .eslintrc.json
+
+          # Erstelle Test-JS-Datei
+          if [ ! -f "src/example.js" ]; then
+            echo 'const express = require("express");
+          const app = express();
+
+          // Vulnerability: SQL Injection
+          app.get("/user", (req, res) => {
+              const query = "SELECT * FROM users WHERE id = " + req.query.id;
+              // eval vulnerability
+              eval(req.query.code);
+          });
+          ' > src/example.js
+          fi
+
+          npx eslint src/ --format json -o eslint-report.json || true
+          npx eslint src/ || true
+
+      # Java Security mit SpotBugs
+      - name: Java Security Check (SpotBugs)
+        if: matrix.language == 'java'
+        run: |
+          # Erstelle einfache Java-Datei für Demo
+          if [ ! -f "src/Example.java" ]; then
+            mkdir -p src/main/java/com/example
+            echo 'package com.example;
+          import java.sql.*;
+
+          public class Example {
+              public void unsafeMethod(String userInput) throws SQLException {
+                  // SQL Injection vulnerability
+                  Connection conn = DriverManager.getConnection("jdbc:h2:mem:");
+                  Statement stmt = conn.createStatement();
+                  String query = "SELECT * FROM users WHERE id = " + userInput;
+                  stmt.executeQuery(query);
+              }
+          }' > src/main/java/com/example/Example.java
+          fi
+
+          # SpotBugs Installation und Ausführung
+          wget -q https://repo.maven.apache.org/maven2/com/github/spotbugs/spotbugs/4.7.3/spotbugs-4.7.3.tgz
+          tar -xzf spotbugs-4.7.3.tgz
+
+          # Kompiliere Java Code wenn möglich
+          if command -v javac &> /dev/null; then
+            javac src/main/java/com/example/*.java || true
+          fi
+
+      - name: Upload SAST Reports
+        if: always()
+        uses: actions/upload-artifact@v3
+        with:
+          name: sast-reports-${{ matrix.language }}
+          path: |
+            *-report.json
+            *-report.txt
+
+  # ========================================
+  # Job 4: SonarCloud Analysis
+  # ========================================
+  sonarcloud:
+    name: 📊 SonarCloud Code Quality & Security
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+        with:
+          fetch-depth: 0 # Vollständige Historie für Blame-Informationen
+
+      - name: Setup Python for Coverage
+        uses: actions/setup-python@v4
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install Dependencies and Run Tests
+        run: |
+          # Python Dependencies
+          pip install pytest pytest-cov
+
+          # Erstelle Test-Datei
+          mkdir -p tests
+          echo 'def test_example():
+              assert True' > tests/test_example.py
+
+          # Run Tests mit Coverage
+          pytest tests/ --cov=src --cov-report=xml --cov-report=term || true
+
+      - name: SonarCloud Scan
+        uses: SonarSource/sonarcloud-github-action@master
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+        with:
+          args: >
+            -Dsonar.projectKey=${{ github.repository_owner }}_${{ github.event.repository.name }}
+            -Dsonar.organization=${{ github.repository_owner }}
+            -Dsonar.python.coverage.reportPaths=coverage.xml
+            -Dsonar.sources=src/
+            -Dsonar.tests=tests/
+
+  # ========================================
+  # Job 5: Container Security Scanning
+  # ========================================
+  container-security:
+    name: 🐳 Container Security Scan
+    runs-on: ubuntu-latest
+    if: contains(github.event.head_commit.message, 'docker') || github.event_name == 'schedule'
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Create Dockerfile if not exists
+        run: |
+          if [ ! -f "Dockerfile" ]; then
+            echo 'FROM python:3.9-slim
+
+          # Vulnerability: Running as root
+          WORKDIR /app
+
+          # Vulnerability: Not specifying exact versions
+          RUN pip install flask requests
+
+          COPY . .
+
+          # Vulnerability: Hardcoded secret
+          ENV API_KEY="hardcoded-secret-key-12345"
+
+          EXPOSE 5000
+          CMD ["python", "app.py"]' > Dockerfile
+          fi
+
+      - name: Build Docker Image
+        run: |
+          docker build -t devsecops-demo:latest .
+
+      - name: Run Trivy Container Scan
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: "devsecops-demo:latest"
+          format: "sarif"
+          output: "trivy-results.sarif"
+          severity: "CRITICAL,HIGH,MEDIUM"
+          exit-code: "0" # Nicht fehlschlagen für Demo
+
+      - name: Upload Trivy Results to GitHub Security
+        uses: github/codeql-action/upload-sarif@v2
+        with:
+          sarif_file: "trivy-results.sarif"
+          category: "container-security"
+
+      - name: Run Hadolint for Dockerfile
+        uses: hadolint/hadolint-action@v3.1.0
+        with:
+          dockerfile: Dockerfile
+          format: json
+          output-file: hadolint-results.json
+
+      - name: Upload Container Reports
+        if: always()
+        uses: actions/upload-artifact@v3
+        with:
+          name: container-security-reports
+          path: |
+            trivy-results.sarif
+            hadolint-results.json
+
+  # ========================================
+  # Job 6: Infrastructure as Code Security
+  # ========================================
+  iac-security:
+    name: 🏗️ IaC Security Scan
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Create sample Terraform file
+        run: |
+          mkdir -p terraform
+          echo 'resource "aws_s3_bucket" "insecure_bucket" {
+            bucket = "my-insecure-bucket"
+            acl    = "public-read"  # Vulnerability: Public S3 bucket
+          }
+
+          resource "aws_security_group" "insecure_sg" {
+            name        = "allow_all"
+            description = "Allow all inbound traffic"
+            
+            ingress {
+              from_port   = 0
+              to_port     = 0
+              protocol    = "-1"
+              cidr_blocks = ["0.0.0.0/0"]  # Vulnerability: Open to world
+            }
+          }' > terraform/main.tf
+
+      - name: Checkov IaC Scan
+        uses: bridgecrewio/checkov-action@master
+        with:
+          directory: .
+          quiet: false
+          soft_fail: true
+          framework: all
+          output_format: json
+          output_file_path: checkov-report.json
+
+      - name: Tfsec Scan
+        uses: aquasecurity/tfsec-action@v1.0.3
+        with:
+          soft_fail: true
+          format: json
+          out: tfsec-report.json
+
+      - name: Upload IaC Reports
+        if: always()
+        uses: actions/upload-artifact@v3
+        with:
+          name: iac-security-reports
+          path: |
+            checkov-report.json
+            tfsec-report.json
+
+  # ========================================
+  # Job 7: License Compliance Check
+  # ========================================
+  license-check:
+    name: ⚖️ License Compliance
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: License Finder
+        run: |
+          # Ruby installation für license_finder
+          sudo apt-get update
+          sudo apt-get install -y ruby-full
+          sudo gem install license_finder
+
+          # Run license finder
+          license_finder report --format json > license-report.json || true
+
+          # Check für problematische Lizenzen
+          if grep -q "GPL\|LGPL\|AGPL" license-report.json; then
+            echo "⚠️ Found copyleft licenses that may require attention"
+          fi
+
+      - name: Upload License Report
+        uses: actions/upload-artifact@v3
+        with:
+          name: license-report
+          path: license-report.json
+
+  # ========================================
+  # Job 8: Security Report Summary
+  # ========================================
+  security-summary:
+    name: 📋 Security Summary Report
+    runs-on: ubuntu-latest
+    needs:
+      [
+        secret-scanning,
+        dependency-check,
+        sast-scanning,
+        sonarcloud,
+        container-security,
+        iac-security,
+        license-check,
+      ]
+    if: always()
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v3
+        with:
+          path: security-reports/
+
+      - name: Generate Summary Report
+        run: |
+          echo "# 🔒 DevSecOps Security Pipeline Report" > SECURITY_SUMMARY.md
+          echo "" >> SECURITY_SUMMARY.md
+          echo "**Pipeline Run:** #${{ github.run_number }}" >> SECURITY_SUMMARY.md
+          echo "**Branch:** ${{ github.ref_name }}" >> SECURITY_SUMMARY.md
+          echo "**Commit:** ${{ github.sha }}" >> SECURITY_SUMMARY.md
+          echo "**Date:** $(date)" >> SECURITY_SUMMARY.md
+          echo "" >> SECURITY_SUMMARY.md
+
+          echo "## 📊 Security Scan Results" >> SECURITY_SUMMARY.md
+          echo "" >> SECURITY_SUMMARY.md
+
+          # Job Status Summary
+          echo "| Security Check | Status |" >> SECURITY_SUMMARY.md
+          echo "|----------------|--------|" >> SECURITY_SUMMARY.md
+          echo "| 🔍 Secret Scanning | ${{ needs.secret-scanning.result }} |" >> SECURITY_SUMMARY.md
+          echo "| 📦 Dependency Check | ${{ needs.dependency-check.result }} |" >> SECURITY_SUMMARY.md
+          echo "| 🛡️ SAST Analysis | ${{ needs.sast-scanning.result }} |" >> SECURITY_SUMMARY.md
+          echo "| 📊 SonarCloud | ${{ needs.sonarcloud.result }} |" >> SECURITY_SUMMARY.md
+          echo "| 🐳 Container Security | ${{ needs.container-security.result }} |" >> SECURITY_SUMMARY.md
+          echo "| 🏗️ IaC Security | ${{ needs.iac-security.result }} |" >> SECURITY_SUMMARY.md
+          echo "| ⚖️ License Check | ${{ needs.license-check.result }} |" >> SECURITY_SUMMARY.md
+          echo "" >> SECURITY_SUMMARY.md
+
+          # Findings Summary
+          echo "## 🔎 Detailed Findings" >> SECURITY_SUMMARY.md
+          echo "" >> SECURITY_SUMMARY.md
+
+          # List all report files
+          echo "### Generated Reports:" >> SECURITY_SUMMARY.md
+          find security-reports/ -type f -name "*.json" -o -name "*.sarif" -o -name "*.html" | while read file; do
+            echo "- $(basename $file)" >> SECURITY_SUMMARY.md
+          done
+
+          echo "" >> SECURITY_SUMMARY.md
+          echo "## 📌 Next Steps" >> SECURITY_SUMMARY.md
+          echo "" >> SECURITY_SUMMARY.md
+          echo "1. Review all security findings in the artifacts" >> SECURITY_SUMMARY.md
+          echo "2. Prioritize CRITICAL and HIGH severity issues" >> SECURITY_SUMMARY.md
+          echo "3. Create tickets for remediation" >> SECURITY_SUMMARY.md
+          echo "4. Re-run pipeline after fixes" >> SECURITY_SUMMARY.md
+
+          cat SECURITY_SUMMARY.md
+
+      - name: Upload Summary Report
+        uses: actions/upload-artifact@v3
+        with:
+          name: security-summary
+          path: SECURITY_SUMMARY.md
+
+      - name: Comment PR with Summary
+        if: github.event_name == 'pull_request'
+        uses: actions/github-script@v6
+        with:
+          script: |
+            const fs = require('fs');
+            const summary = fs.readFileSync('SECURITY_SUMMARY.md', 'utf8');
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: summary
+            })
+
+      - name: Create Issue for Critical Findings
+        if: failure() && github.ref == 'refs/heads/main'
+        uses: actions/github-script@v6
+        with:
+          script: |
+            github.rest.issues.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              title: `🚨 Security Issues Found in Pipeline Run #${context.runNumber}`,
+              body: `Critical security issues were found in the pipeline run. Please check the [workflow run](https://github.com/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}) for details.`,
+              labels: ['security', 'high-priority']
+            })

@@ -1,0 +1,78 @@
+version: 2
+updates:
+  # Python Dependencies
+  - package-ecosystem: "pip"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "04:00"
+    open-pull-requests-limit: 10
+    reviewers:
+      - "LuisDuechtel"  # Ersetze mit deinem GitHub Username
+    labels:
+      - "dependencies"
+      - "security"
+    commit-message:
+      prefix: "🔒 Security"
+      include: "scope"
+
+  # JavaScript/npm Dependencies
+  - package-ecosystem: "npm"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "04:00"
+    open-pull-requests-limit: 10
+    reviewers:
+      - "LuisDuechtel
+      - "dependencies"
+      - "security"
+    vulnerability-alerts:
+      enabled: true
+
+  # Docker Dependencies
+  - package-ecosystem: "docker"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    reviewers:
+      - "DEIN-USERNAME"
+    labels:
+      - "docker"
+      - "security"
+
+  # GitHub Actions Dependencies
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "monthly"
+    reviewers:
+      - "LuisDuechtel"
+    labels:
+      - "github-actions"
+      - "maintenance"
+
+  # Maven/Java Dependencies (falls verwendet)
+  - package-ecosystem: "maven"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 10
+    reviewers:
+      - "LuisDuechtel"
+    labels:
+      - "java"
+      - "dependencies"
+
+  # Terraform Dependencies
+  - package-ecosystem: "terraform"
+    directory: "/terraform"
+    schedule:
+      interval: "weekly"
+    reviewers:
+      - "LuisDuechtel"
+    labels:
+      - "terraform"
+      - "infrastructure"

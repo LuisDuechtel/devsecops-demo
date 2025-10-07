@@ -1,0 +1,76 @@
+# Gitleaks Configuration File
+title = "DevSecOps Demo Gitleaks Configuration"
+
+# Erweiterung der Standard-Regeln
+[extend]
+useDefault = true
+
+# Eigene Regeln für projektspezifische Secrets
+[[rules]]
+id = "custom-api-key"
+description = "Custom API Key Pattern"
+regex = '''(?i)(api[_\-\s]?key|apikey)[_\-\s]?[=:]\s*['"]?[a-z0-9]{32,}['"]?'''
+keywords = ["api", "key", "apikey"]
+
+[[rules]]
+id = "jwt-token"
+description = "JWT Token"
+regex = '''eyJ[A-Za-z0-9-_=]+\.[A-Za-z0-9-_=]+\.?[A-Za-z0-9-_.+/=]*'''
+keywords = ["jwt", "token"]
+
+[[rules]]
+id = "database-connection-string"
+description = "Database Connection String"
+regex = '''(?i)(mongodb|postgresql|mysql|mssql|oracle|jdbc):\/\/[^:]+:[^@]+@[^\/]+'''
+keywords = ["mongodb", "postgresql", "mysql", "connection"]
+
+# Pfade die ignoriert werden sollen
+[allowlist]
+paths = [
+    '''node_modules''',
+    '''vendor''',
+    '''\.git''',
+    '''\.github/workflows/.*\.yml''',  # Workflows selbst ignorieren
+    '''test.*''',
+    '''.*\.test\..*''',
+    '''.*_test\..*''',
+]
+
+# Bestimmte Dateitypen ignorieren
+files = [
+    '''(.*?)(jpg|jpeg|png|gif|doc|docx|pdf|bin|svg|ico|mp4|mov|avi|mp3|wav|woff|woff2|ttf|eot)$''',
+    '''package-lock\.json''',
+    '''yarn\.lock''',
+    '''Gemfile\.lock''',
+]
+
+# Erlaubte Patterns (False Positives vermeiden)
+[[rules.allowlist]]
+description = "Beispiel/Demo Secrets erlauben"
+regex = '''(?i)(example|demo|test|sample|dummy|fake)'''
+
+[[rules.allowlist]]
+description = "Localhost URLs"
+regex = '''(?i)(localhost|127\.0\.0\.1|0\.0\.0\.0)'''
+
+[[rules.allowlist]]
+description = "Public Keys (sind ok)"
+regex = '''(?i)public[_\-\s]?key'''
+
+# Commits die ignoriert werden sollen (z.B. alte Commits)
+[allowlist.commits]
+commits = [
+    # Hier können spezifische Commit-Hashes eingetragen werden
+    # "abcd1234...",
+]
+
+# Stopwords - wenn diese gefunden werden, wird die Regel ignoriert
+[[rules.allowlist]]
+stopwords = [
+    "example",
+    "test",
+    "fake",
+    "dummy",
+    "sample",
+    "xxxxxx",
+]

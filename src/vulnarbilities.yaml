@@ -1,0 +1,65 @@
+# VULNERABILITY 1: Using outdated base image
+FROM python:3.6-slim
+
+# VULNERABILITY 2: Running as root user (no USER instruction)
+
+# VULNERABILITY 3: Using apt-get upgrade (can break reproducibility)
+RUN apt-get update && apt-get upgrade -y
+
+# VULNERABILITY 4: Installing unnecessary packages
+RUN apt-get install -y \
+    wget \
+    curl \
+    netcat \
+    vim \
+    telnet
+
+# VULNERABILITY 5: Not specifying package versions
+RUN pip install flask requests sqlalchemy
+
+# VULNERABILITY 6: Copying everything including sensitive files
+COPY . /app
+
+# VULNERABILITY 7: Hardcoded secrets in ENV variables
+ENV DATABASE_PASSWORD=admin123
+ENV API_KEY=sk-prod-key-12345
+ENV JWT_SECRET=super-secret-jwt-key
+
+# VULNERABILITY 8: Using ADD instead of COPY for local files
+ADD ./config /app/config
+
+# VULNERABILITY 9: Downloading files over HTTP (not HTTPS)
+RUN wget http://example.com/insecure-package.tar.gz
+
+# VULNERABILITY 10: Not using specific versions for base image
+FROM node:latest AS builder
+
+# VULNERABILITY 11: Exposing unnecessary ports
+EXPOSE 22 23 3306 5432 6379 8080 9000
+
+# VULNERABILITY 12: Using shell form of CMD (not exec form)
+CMD python /app/main.py
+
+# VULNERABILITY 13: Not removing package managers after install
+RUN apt-get install -y gcc
+
+# VULNERABILITY 14: Leaving sensitive files in image layers
+RUN echo "password123" > /tmp/password.txt && \
+    rm /tmp/password.txt  # File still in previous layer!
+
+# VULNERABILITY 15: Wide permissions
+RUN chmod 777 /app
+
+# VULNERABILITY 16: Not using multi-stage builds (larger attack surface)
+
+# VULNERABILITY 17: Not setting WORKDIR
+# Files are in root directory
+
+# VULNERABILITY 18: Using sudo (shouldn't be needed in container)
+RUN apt-get install -y sudo
+
+# VULNERABILITY 19: Not using HEALTHCHECK
+# No health monitoring
+
+# VULNERABILITY 20: Storing secrets in image
+COPY .env /app/.env  # Contains production secrets!

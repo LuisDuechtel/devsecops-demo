@@ -37,7 +37,7 @@ jobs:
 
       - name: Upload Gitleaks Report
         if: failure()
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: gitleaks-report
           path: |
@@ -67,7 +67,7 @@ jobs:
 
       - name: Upload Dependency Check Report
         if: always()
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: dependency-check-report
           path: reports/
@@ -206,7 +206,7 @@ jobs:
 
       - name: Upload SAST Reports
         if: always()
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: sast-reports-${{ matrix.language }}
           path: |
@@ -315,7 +315,7 @@ jobs:
 
       - name: Upload Container Reports
         if: always()
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: container-security-reports
           path: |
@@ -371,7 +371,7 @@ jobs:
 
       - name: Upload IaC Reports
         if: always()
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: iac-security-reports
           path: |
@@ -404,7 +404,7 @@ jobs:
           fi
 
       - name: Upload License Report
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: license-report
           path: license-report.json
@@ -431,7 +431,7 @@ jobs:
         uses: actions/checkout@v3
 
       - name: Download all artifacts
-        uses: actions/download-artifact@v3
+        uses: actions/download-artifact@v4
         with:
           path: security-reports/
 
